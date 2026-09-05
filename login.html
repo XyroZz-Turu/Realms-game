@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Masuk - Game Realms</title>
+<link rel="stylesheet" href="assets/css/style.css" />
+<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+</head>
+<body>
+
+<div class="wrap" style="padding-top:50px;padding-bottom:40px;">
+
+  <div class="login-card">
+    <div class="login-banner">
+      <img id="loginBannerImg" src="assets/login-banner.jpg" alt=""
+           onerror="this.style.display='none'; document.getElementById('loginBannerFallback').style.display='flex';" />
+      <div class="login-banner-fallback" id="loginBannerFallback" style="display:none;">Game Realms</div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" id="tabLogin">Masuk</button>
+      <button class="tab-btn" id="tabRegister">Daftar</button>
+    </div>
+
+    <div id="formLogin">
+      <div class="field field-icon">
+        <span class="icon-sym" aria-hidden="true">&#9993;</span>
+        <input type="email" id="loginEmail" placeholder="Email" />
+      </div>
+      <div class="field field-icon">
+        <span class="icon-sym" aria-hidden="true">&#9679;</span>
+        <input type="password" id="loginPassword" placeholder="Password" />
+        <span class="icon-sym toggle-eye" id="toggleEyeLogin" style="cursor:pointer;" aria-hidden="true">&#9673;</span>
+      </div>
+      <div class="remember-row">
+        <label><input type="checkbox" id="rememberMe" checked style="width:auto;" /> Ingat saya</label>
+        <a href="#" id="lupaPassword" style="color:var(--accent-soft);">Lupa password?</a>
+      </div>
+      <button class="btn btn-primary" id="btnLogin" style="margin-bottom:10px;"><span class="icon-sym" aria-hidden="true">&#8594;</span> Masuk</button>
+      <p id="belumVerifikasi" style="display:none;font-size:12px;color:var(--danger);text-align:center;margin:-4px 0 10px;">
+        Email belum diverifikasi. <a href="#" id="kirimUlangVerif" style="color:var(--accent-soft);">Kirim ulang email verifikasi</a>
+      </p>
+      <button class="btn btn-google" id="btnGoogleLogin"><span class="icon-sym" aria-hidden="true">G</span> Lanjutkan dengan Google</button>
+    </div>
+
+    <div id="formRegister" style="display:none;">
+      <div class="field field-icon">
+        <span class="icon-sym" aria-hidden="true">&#9787;</span>
+        <input type="text" id="regUsername" placeholder="Username, misal: TokoBudi" />
+      </div>
+      <div class="field field-icon">
+        <span class="icon-sym" aria-hidden="true">&#9993;</span>
+        <input type="email" id="regEmail" placeholder="Email" />
+      </div>
+      <div class="field field-icon">
+        <span class="icon-sym" aria-hidden="true">&#9679;</span>
+        <input type="password" id="regPassword" placeholder="Password (min. 6 karakter)" />
+        <span class="icon-sym toggle-eye" id="toggleEyeReg" style="cursor:pointer;" aria-hidden="true">&#9673;</span>
+      </div>
+      <div class="field">
+        <div class="g-recaptcha" data-sitekey="GANTI_DENGAN_SITE_KEY_RECAPTCHA_KAMU"></div>
+      </div>
+      <button class="btn btn-primary" id="btnRegister" style="margin-bottom:10px;"><span class="icon-sym" aria-hidden="true">&#9787;+</span> Daftar</button>
+      <button class="btn btn-google" id="btnGoogleRegister"><span class="icon-sym" aria-hidden="true">G</span> Daftar dengan Google</button>
+    </div>
+  </div>
+
+  <p style="text-align:center;margin-top:16px;"><a href="index.html" style="font-size:12px;color:var(--muted);">&larr; Kembali</a></p>
+  <p class="login-footer">&copy; 2026 Game Realms &middot; All rights reserved</p>
+</div>
+
+<script type="module">
+  import { auth, db } from "./assets/js/firebase-config.js";
+  import { enablePageTransitions, applyTheme, ensureUserProfile, showToast, renderBgVideo } from "./assets/js/common.js";
+  import {
+    signInWithEmailAndPassword, createUserWithEmailAndPassword,
+    GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, onAuthStateChanged,
+    setPersistence, browserLocalPersistence, browserSessionPersistence, sendEmailVerification
+  } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
+  import { doc, getDoc } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+
+  applyTheme();
+  enablePageTransitions();
+  renderBgVideo();
+
+  let isProcessing = false;
+
+  // Kalau udah login (sesi lama), langsung lempar ke jelajah tanpa nampilin intro lagi
+  onAuthStateChanged(auth, (user) => {
+    if (user && !isProcessing) window.location.href = "jelajah.html";
+  });
+
+  // Tab switcher
+  const tabLogin = document.getElementById("tabLogin");
+  const tabRegister = document.getElementById("tabRegister");
+  const formLogin = document.getElementById("formLogin");
+  const formRegister = document.getElementById("formRegister");
+  tabLogin.addEventListener("click", () => {
+    tabLogin.classList.add("active"); tabRegister.classList.remove("active");
+    formLogin.style.display = "block"; formRegister.style.display = "none";
+  });
+  tabRegister.addEventListener("click", () => {
+    tabRegister.classList.add("active"); tabLogin.classList.remove("active");
+    formRegister.style.display = "block"; formLogin.style.display = "none";
+  });
+
+  // Toggle lihat password
+  function attachEyeToggle(eyeId, inputId){
+    document.getElementById(eyeId).addEventListener("click", () => {
+      const input = document.getElementById(inputId);
+      const eye = document.getElementById(eyeId);
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      eye.innerHTML = show ? "&#8856;" : "&#9673;";
+    });
+  }
+  attachEyeToggle("toggleEyeLogin", "loginPassword");
+  attachEyeToggle("toggleEyeReg", "regPassword");
+
+  let pendingUnverifiedUser = null;
+
+  // Login email/password
+  document.getElementById("btnLogin").addEventListener("click", async () => {
+    const email = document.getElementById("loginEmail").value.trim();
+    const password = document.getElementById("loginPassword").value;
+    const remember = document.getElementById("rememberMe").checked;
+    if (!email || !password) return showToast("Isi email & password dulu", true);
+    isProcessing = true;
+    document.getElementById("belumVerifikasi").style.display = "none";
+    try {
+      await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      if (!cred.user.emailVerified){
+        pendingUnverifiedUser = cred.user;
+        await auth.signOut();
+        document.getElementById("belumVerifikasi").style.display = "block";
+        showToast("Verifikasi email dulu sebelum masuk", true);
+        isProcessing = false; return;
+      }
+      const uref = doc(db, "users", cred.user.uid);
+      const usnap = await getDoc(uref);
+      if (usnap.exists() && usnap.data().banned){
+        await auth.signOut();
+        showToast("Akun ini diblokir admin", true);
+        isProcessing = false; return;
+      }
+      window.location.href = "intro.html";
+    } catch(err){
+      showToast("Login gagal: email/password salah", true);
+      isProcessing = false;
+    }
+  });
+
+  document.getElementById("kirimUlangVerif").addEventListener("click", async (e) => {
+    e.preventDefault();
+    if (!pendingUnverifiedUser) return showToast("Coba login dulu sekali biar bisa kirim ulang", true);
+    try {
+      await sendEmailVerification(pendingUnverifiedUser);
+      showToast("Email verifikasi dikirim ulang, cek inbox/spam");
+    } catch(err){
+      showToast("Gagal kirim, coba beberapa saat lagi", true);
+    }
+  });
+
+  document.getElementById("lupaPassword").addEventListener("click", async (e) => {
+    e.preventDefault();
+    const email = document.getElementById("loginEmail").value.trim();
+    if (!email) return showToast("Isi email dulu di atas, lalu klik lagi", true);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      showToast("Link reset password dikirim ke email");
+    } catch(err){
+      showToast("Gagal kirim, cek email-nya", true);
+    }
+  });
+
+  // Register email/password
+  document.getElementById("btnRegister").addEventListener("click", async () => {
+    const username = document.getElementById("regUsername").value.trim();
+    const email = document.getElementById("regEmail").value.trim();
+    const password = document.getElementById("regPassword").value;
+    if (!username || !email || !password) return showToast("Lengkapi semua field", true);
+    if (password.length < 6) return showToast("Password minimal 6 karakter", true);
+    if (typeof grecaptcha !== "undefined" && grecaptcha.getResponse().length === 0){
+      return showToast("Centang captcha dulu", true);
+    }
+    isProcessing = true;
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      await ensureUserProfile(cred.user, username);
+      await sendEmailVerification(cred.user);
+      await auth.signOut();
+      isProcessing = false;
+      showToast("Akun dibuat! Cek email kamu buat verifikasi dulu sebelum masuk.");
+      tabLogin.click();
+      document.getElementById("loginEmail").value = email;
+    } catch(err){
+      showToast(err.code === "auth/email-already-in-use" ? "Email sudah dipakai" : "Gagal daftar", true);
+      isProcessing = false;
+    }
+  });
+
+  // Google sign-in (login & register pakai fungsi sama)
+  async function googleSignIn(){
+    isProcessing = true;
+    try {
+      const provider = new GoogleAuthProvider();
+      const cred = await signInWithPopup(auth, provider);
+      const uref = doc(db, "users", cred.user.uid);
+      const usnap = await getDoc(uref);
+      if (usnap.exists() && usnap.data().banned){
+        await auth.signOut();
+        showToast("Akun ini diblokir admin", true);
+        isProcessing = false; return;
+      }
+      await ensureUserProfile(cred.user, cred.user.displayName);
+      window.location.href = "intro.html";
+    } catch(err){
+      showToast("Google sign-in gagal/dibatalkan", true);
+      isProcessing = false;
+    }
+  }
+  document.getElementById("btnGoogleLogin").addEventListener("click", googleSignIn);
+  document.getElementById("btnGoogleRegister").addEventListener("click", googleSignIn);
+</script>
+</body>
+</html>

@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Detail Produk - Game Realms</title>
+<link rel="stylesheet" href="assets/css/style.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="topbar">
+    <button class="icon-btn" onclick="history.back()"><span class="icon-sym" aria-hidden="true">&#8592;</span></button>
+    <button class="icon-btn" id="btnFavorit"><span class="icon-sym" aria-hidden="true">&#9825;</span></button>
+  </div>
+
+  <div class="card" id="produkHeader">Memuat...</div>
+
+  <button class="btn btn-whatsapp" id="btnWhatsapp" style="display:none;margin-bottom:16px;"><span class="icon-sym" aria-hidden="true">&#9743;</span> Hubungi Penjual via WhatsApp</button>
+
+  <div class="card" id="ownerActions" style="display:none;">
+    <h2 class="section-title">Kelola produk</h2>
+    <div class="grid-2" style="margin-bottom:10px;">
+      <button class="btn btn-outline btn-sm" id="btnEdit">Edit produk</button>
+      <button class="btn btn-danger btn-sm" id="btnHapus">Hapus produk</button>
+    </div>
+    <button class="btn btn-primary" id="btnTandaiTerjual" style="margin-bottom:10px;">Tandai Terjual</button>
+
+    <p class="muted" style="margin:14px 0 10px;">Catat transaksi manual (opsional)</p>
+    <div class="grid-2" style="margin-bottom:10px;">
+      <div class="field" style="margin-bottom:0;">
+        <label>Harga jual</label>
+        <input type="text" inputmode="numeric" id="inputJual" placeholder="0" />
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label>Harga beli</label>
+        <input type="text" inputmode="numeric" id="inputBeli" placeholder="0" />
+      </div>
+    </div>
+    <button class="btn btn-dark" id="btnSimpanTransaksi">Simpan transaksi</button>
+  </div>
+
+  <div class="card">
+    <div class="month-row" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h2 class="section-title" style="margin:0;">Grafik harga</h2>
+      <select id="monthSelect"></select>
+    </div>
+    <div style="display:flex;gap:16px;margin-bottom:12px;font-size:13px;color:var(--muted);">
+      <div><span style="width:8px;height:8px;border-radius:50%;background:#7F77DD;display:inline-block;margin-right:6px;"></span>Jual</div>
+      <div><span style="width:8px;height:8px;border-radius:50%;background:#AFA9EC;display:inline-block;margin-right:6px;"></span>Beli</div>
+    </div>
+    <div id="chartHolder" style="position:relative;height:190px;"><canvas id="chart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2 class="section-title">Ulasan & Rating</h2>
+    <p id="ratingSummary" class="muted">Belum ada rating</p>
+    <div id="ratingList"></div>
+    <div id="ratingForm" style="margin-top:12px;display:none;">
+      <div class="field">
+        <label>Kasih rating</label>
+        <select id="ratingScore">
+          <option value="5">&#9733;&#9733;&#9733;&#9733;&#9733; (5)</option>
+          <option value="4">&#9733;&#9733;&#9733;&#9733; (4)</option>
+          <option value="3">&#9733;&#9733;&#9733; (3)</option>
+          <option value="2">&#9733;&#9733; (2)</option>
+          <option value="1">&#9733; (1)</option>
+        </select>
+      </div>
+      <div class="field">
+        <textarea id="ratingComment" rows="2" placeholder="Komentar (opsional)"></textarea>
+      </div>
+      <button class="btn btn-dark" id="btnKirimRating">Kirim rating</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="section-title">Tanya seller</h2>
+    <div class="chat-box" id="chatBox"></div>
+    <div class="chat-input-row" id="chatInputRow">
+      <input type="text" id="chatInput" placeholder="Tulis pesan..." />
+      <button class="btn btn-primary btn-sm" id="btnKirimChat">Kirim</button>
+    </div>
+  </div>
+
+  <button class="btn btn-outline" id="btnReport" style="margin-top:4px;"><span class="icon-sym" aria-hidden="true">&#9873;</span> Laporkan produk ini</button>
+</div>
+
+<div class="modal-overlay" id="modalEdit" style="display:none;">
+  <div class="modal-sheet">
+    <h3>Edit Produk</h3>
+    <div class="field"><label>Nama produk</label><input type="text" id="eNama" /></div>
+    <div class="grid-2">
+      <div class="field"><label>Kode produk</label><input type="text" id="eKode" /></div>
+      <div class="field"><label>Kategori</label><input type="text" id="eKategori" /></div>
+    </div>
+    <div class="field"><label>Stok</label><input type="number" id="eStok" min="0" /></div>
+    <div class="field"><label>Detail produk</label><textarea id="eDetail" rows="3"></textarea></div>
+    <div class="field">
+      <label>Foto (maks. 5)</label>
+      <div class="thumb-picker" id="eThumbPicker"></div>
+      <input type="file" id="eFoto" accept="image/*" multiple style="margin-top:8px;" />
+    </div>
+    <div class="grid-2">
+      <button class="btn btn-outline" id="eBatal">Batal</button>
+      <button class="btn btn-primary" id="eSimpan">Simpan Perubahan</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalReport" style="display:none;">
+  <div class="modal-sheet">
+    <h3>Laporkan produk ini</h3>
+    <div class="field"><label>Alasan laporan</label><textarea id="reportReason" rows="3" placeholder="Jelaskan alasan lo report..."></textarea></div>
+    <div class="field"><label>Bukti screenshot (wajib)</label><input type="file" id="reportFoto" accept="image/*" /></div>
+    <div class="grid-2">
+      <button class="btn btn-outline" id="reportBatal">Batal</button>
+      <button class="btn btn-danger" id="reportKirim">Kirim Laporan</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { db, auth } from "./assets/js/firebase-config.js";
+  import {
+    enablePageTransitions, applyTheme,
+    renderNav, renderBgVideo, fmtRupiah, parseNum, attachRupiahInput,
+    escapeHtml, timeAgo, monthKey, monthLabel, showToast, waLink, compressImage,
+    renderLiveChatWidget, isVvipActive
+  } from "./assets/js/common.js";
+  import {
+    doc, getDoc, updateDoc, deleteDoc, collection, addDoc, query, orderBy,
+    onSnapshot, Timestamp, setDoc, getDocs
+  } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
+
+  applyTheme();
+  enablePageTransitions();
+  renderBgVideo();
+  renderNav("jelajah");
+
+  const params = new URLSearchParams(location.search);
+  const produkId = params.get("id");
+  if (!produkId){ document.body.innerHTML = "<p style='padding:20px;color:#fff'>Produk tidak ditemukan.</p>"; throw new Error("no id"); }
+
+  const produkRef = doc(db, "produk", produkId);
+  let currentUser = null;
+  let produkData = null;
+  let selectedMonth = null;
+  let allTx = [];
+  let chartInstance = null;
+
+  onAuthStateChanged(auth, (user) => {
+    currentUser = user;
+    loadProduk();
+    watchChat();
+    watchRating();
+    if (user){ checkFavorit(); renderLiveChatWidget(user); }
+  });
+
+  async function loadProduk(){
+    const snap = await getDoc(produkRef);
+    if (!snap.exists()){ document.getElementById("produkHeader").innerHTML = "Produk tidak ditemukan/sudah dihapus."; return; }
+    produkData = snap.data();
+    renderHeader();
+    if (currentUser && currentUser.uid === produkData.ownerId){
+      document.getElementById("ownerActions").style.display = "block";
+      document.getElementById("ratingForm").style.display = "none";
+      document.getElementById("btnWhatsapp").style.display = "none";
+    } else {
+      if (currentUser) document.getElementById("ratingForm").style.display = "block";
+      const ownerSnap = await getDoc(doc(db,"users",produkData.ownerId));
+      const ownerData = ownerSnap.exists() ? ownerSnap.data() : null;
+      if (isVvipActive(ownerData)){
+        document.getElementById("vvipBadgeHolder").innerHTML = '<span class="vvip-badge">VVIP</span>';
+      }
+      const nomor = ownerData ? ownerData.whatsapp : "";
+      const wa = document.getElementById("btnWhatsapp");
+      if (nomor){
+        wa.style.display = "flex";
+        wa.onclick = () => window.open(waLink(nomor, `Halo, saya tertarik dengan produk "${produkData.nama}" di Game Realms`), "_blank");
+      } else {
+        wa.style.display = "none";
+      }
+    }
+    watchTransaksi();
+  }
+
+  function renderHeader(){
+    const fotos = (produkData.fotos && produkData.fotos.length) ? produkData.fotos : (produkData.foto ? [produkData.foto] : []);
+    const galleryHtml = fotos.length ? `
+      <div class="gallery">
+        <div class="gallery-scroll" id="galleryScroll">
+          ${fotos.map(f => `<img src="${f}" />`).join("")}
+        </div>
+        ${fotos.length > 1 ? `<div class="gallery-dots" id="galleryDots">${fotos.map((_,i)=>`<span class="${i===0?'active':''}"></span>`).join("")}</div>` : ""}
+      </div>
+    ` : `<img src="https://placehold.co/400x260/1A1625/AFA9EC?text=Produk" style="width:100%;border-radius:12px;margin-bottom:14px;object-fit:cover;max-height:220px;" />`;
+
+    document.getElementById("produkHeader").innerHTML = `
+      ${galleryHtml}
+      <p style="font-size:18px;font-weight:600;margin:0 0 4px;">${escapeHtml(produkData.nama)} <span id="vvipBadgeHolder"></span>${produkData.status==='terjual' ? '<span class="item-badge sold">Terjual</span>' : ''}</p>
+      <p class="muted" style="margin:0 0 8px;">Kode: ${escapeHtml(produkData.kode||"-")} &middot; oleh <a href="toko.html?uid=${produkData.ownerId}" style="color:var(--accent-soft);">${escapeHtml(produkData.ownerName||"Toko")}</a></p>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+        ${produkData.kategori ? `<span class="chip">${escapeHtml(produkData.kategori)}</span>` : ""}
+        <span class="chip ${(produkData.stok||0)===0 ? 'stok-low' : ''}">Stok: ${produkData.stok ?? 0}</span>
+      </div>
+      <p style="font-size:14px;line-height:1.5;margin:0;">${escapeHtml(produkData.detail||"Tidak ada deskripsi.")}</p>
+    `;
+
+    if (fotos.length > 1){
+      const scrollEl = document.getElementById("galleryScroll");
+      const dots = document.querySelectorAll("#galleryDots span");
+      scrollEl.addEventListener("scroll", () => {
+        const idx = Math.round(scrollEl.scrollLeft / scrollEl.clientWidth);
+        dots.forEach((d,i) => d.classList.toggle("active", i===idx));
+      });
+    }
+  }
+
+  // ===== FAVORIT =====
+  const favRef = () => doc(db, "users", currentUser.uid, "favorit", produkId);
+  async function checkFavorit(){
+    const snap = await getDoc(favRef());
+    document.getElementById("btnFavorit").innerHTML = snap.exists() ? '<span class="icon-sym" style="color:#D4537E" aria-hidden="true">&#9829;</span>' : '<span class="icon-sym" aria-hidden="true">&#9825;</span>';
+  }
+  document.getElementById("btnFavorit").addEventListener("click", async () => {
+    if (!currentUser) return showToast("Login dulu buat nge-favoritin", true);
+    const ref = favRef();
+    const snap = await getDoc(ref);
+    if (snap.exists()){
+      await deleteDoc(ref);
+      showToast("Dihapus dari favorit");
+    } else {
+      await setDoc(ref, { type:"produk", refId: produkId, nama: produkData.nama, foto: produkData.foto||"", createdAt: new Date() });
+      showToast("Ditambah ke favorit");
+    }
+    checkFavorit();
+  });
+
+  // ===== EDIT / HAPUS PRODUK =====
+  let eFotosData = [];
+  function renderEThumbPicker(){
+    const wrap = document.getElementById("eThumbPicker");
+    wrap.innerHTML = eFotosData.map((src, i) => `
+      <div class="thumb-slot"><img src="${src}" /><span class="thumb-remove" data-eremove="${i}">&times;</span></div>
+    `).join("");
+    wrap.querySelectorAll("[data-eremove]").forEach(el => el.addEventListener("click", () => {
+      eFotosData.splice(parseInt(el.dataset.eremove,10), 1);
+      renderEThumbPicker();
+    }));
+  }
+  document.getElementById("eFoto").addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files).slice(0, 5 - eFotosData.length);
+    for (const f of files){ try { eFotosData.push(await compressImage(f)); } catch(err){ console.error(err); } }
+    renderEThumbPicker();
+    e.target.value = "";
+    if (eFotosData.length >= 5) showToast("Maksimal 5 foto");
+  });
+
+  document.getElementById("btnEdit").addEventListener("click", () => {
+    document.getElementById("eNama").value = produkData.nama || "";
+    document.getElementById("eKode").value = produkData.kode || "";
+    document.getElementById("eKategori").value = produkData.kategori || "";
+    document.getElementById("eStok").value = produkData.stok ?? 0;
+    document.getElementById("eDetail").value = produkData.detail || "";
+    eFotosData = (produkData.fotos && produkData.fotos.length) ? [...produkData.fotos] : (produkData.foto ? [produkData.foto] : []);
+    renderEThumbPicker();
+    document.getElementById("modalEdit").style.display = "flex";
+  });
+  document.getElementById("eBatal").addEventListener("click", () => document.getElementById("modalEdit").style.display = "none");
+  document.getElementById("eSimpan").addEventListener("click", async () => {
+    const nama = document.getElementById("eNama").value.trim();
+    if (!nama) return showToast("Nama produk wajib diisi", true);
+    const btn = document.getElementById("eSimpan"); btn.disabled = true;
+    try {
+      await updateDoc(produkRef, {
+        nama, kode: document.getElementById("eKode").value.trim(),
+        kategori: document.getElementById("eKategori").value.trim(),
+        stok: parseInt(document.getElementById("eStok").value,10) || 0,
+        detail: document.getElementById("eDetail").value.trim(),
+        fotos: eFotosData, foto: eFotosData[0] || ""
+      });
+      document.getElementById("modalEdit").style.display = "none";
+      showToast("Produk diupdate");
+      loadProduk();
+    } catch(err){ console.error(err); showToast("Gagal update produk", true); }
+    btn.disabled = false;
+  });
+  document.getElementById("btnHapus").addEventListener("click", async () => {
+    if (!confirm("Yakin hapus produk ini? Semua riwayat harga ikut terhapus.")) return;
+    await deleteDoc(produkRef);
+    showToast("Produk dihapus");
+    location.href = "dashboard.html";
+  });
+
+  // ===== TANDAI TERJUAL =====
+  document.getElementById("btnTandaiTerjual").addEventListener("click", async () => {
+    const harga = prompt("Harga jual (angka saja):");
+    const jual = parseNum(harga);
+    if (!jual) return showToast("Harga gak valid", true);
+    const now = new Date();
+    await addDoc(collection(db, "produk", produkId, "transaksi"), {
+      jual, beli: produkData.hargaBeliTerakhir || 0, untung: jual - (produkData.hargaBeliTerakhir||0),
+      bulan: monthKey(now), createdAt: Timestamp.fromDate(now)
+    });
+    await updateDoc(produkRef, { status:"terjual", hargaTerakhir: jual });
+    showToast("Produk ditandai terjual, grafik diupdate");
+    loadProduk();
+  });
+
+  // ===== TRANSAKSI MANUAL =====
+  attachRupiahInput(document.getElementById("inputJual"));
+  attachRupiahInput(document.getElementById("inputBeli"));
+  document.getElementById("btnSimpanTransaksi").addEventListener("click", async () => {
+    const jual = parseNum(document.getElementById("inputJual").value);
+    const beli = parseNum(document.getElementById("inputBeli").value);
+    if (!jual && !beli) return showToast("Isi minimal salah satu harga", true);
+    const now = new Date();
+    await addDoc(collection(db, "produk", produkId, "transaksi"), {
+      jual, beli, untung: jual-beli, bulan: monthKey(now), createdAt: Timestamp.fromDate(now)
+    });
+    await updateDoc(produkRef, { hargaTerakhir: jual || produkData.hargaTerakhir || 0, hargaBeliTerakhir: beli || produkData.hargaBeliTerakhir || 0 });
+    document.getElementById("inputJual").value = ""; document.getElementById("inputBeli").value = "";
+    showToast("Transaksi disimpan");
+    loadProduk();
+  });
+
+  // ===== GRAFIK =====
+  function watchTransaksi(){
+    const q = query(collection(db, "produk", produkId, "transaksi"), orderBy("createdAt","asc"));
+    onSnapshot(q, (snap) => {
+      allTx = snap.docs.map(d => {
+        const t = d.data();
+        return { id:d.id, jual:t.jual||0, beli:t.beli||0, untung:t.untung||0, bulan:t.bulan, createdAt: t.createdAt?.toDate ? t.createdAt.toDate() : new Date() };
+      });
+      if (!selectedMonth && allTx.length) selectedMonth = allTx[allTx.length-1].bulan;
+      if (!selectedMonth) selectedMonth = monthKey(new Date());
+      renderChart();
+    });
+  }
+  function renderChart(){
+    const keys = Array.from(new Set(allTx.map(t=>t.bulan)));
+    if (!keys.includes(selectedMonth)) keys.push(selectedMonth);
+    keys.sort().reverse();
+    const sel = document.getElementById("monthSelect");
+    sel.innerHTML = keys.map(k => `<option value="${k}" ${k===selectedMonth?"selected":""}>${monthLabel(k)}</option>`).join("");
+
+    const monthTx = allTx.filter(t => t.bulan === selectedMonth);
+    const holder = document.getElementById("chartHolder");
+    if (monthTx.length === 0){
+      holder.innerHTML = '<div class="empty-state">Belum ada data harga bulan ini</div>';
+      return;
+    }
+    if (!document.getElementById("chart")) holder.innerHTML = '<canvas id="chart"></canvas>';
+    const ctx = document.getElementById("chart");
+    const c2d = ctx.getContext("2d");
+    const g1 = c2d.createLinearGradient(0,0,0,190); g1.addColorStop(0,"rgba(127,119,221,0.28)"); g1.addColorStop(1,"rgba(127,119,221,0)");
+    const g2 = c2d.createLinearGradient(0,0,0,190); g2.addColorStop(0,"rgba(175,169,236,0.20)"); g2.addColorStop(1,"rgba(175,169,236,0)");
+    if (chartInstance) chartInstance.destroy();
+    chartInstance = new Chart(ctx, {
+      type:"line",
+      data:{
+        labels: monthTx.map(t=>t.createdAt.getDate().toString()),
+        datasets:[
+          { label:"Jual", data:monthTx.map(t=>t.jual), borderColor:"#7F77DD", backgroundColor:g1, fill:true, tension:0.4, pointRadius:0, borderWidth:2 },
+          { label:"Beli", data:monthTx.map(t=>t.beli), borderColor:"#AFA9EC", backgroundColor:g2, fill:true, tension:0.4, pointRadius:0, borderWidth:2 }
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:(c)=>c.dataset.label+": "+fmtRupiah(c.parsed.y) } } },
+        scales:{ x:{ grid:{display:false}, ticks:{font:{size:11},color:"#8B87A0"} }, y:{ display:false } }
+      }
+    });
+  }
+  document.getElementById("monthSelect").addEventListener("change", (e) => { selectedMonth = e.target.value; renderChart(); });
+
+  // ===== RATING =====
+  function watchRating(){
+    const q = query(collection(db, "produk", produkId, "rating"), orderBy("createdAt","desc"));
+    onSnapshot(q, (snap) => {
+      const list = snap.docs.map(d => d.data());
+      const listEl = document.getElementById("ratingList");
+      const sumEl = document.getElementById("ratingSummary");
+      if (list.length === 0){
+        sumEl.textContent = "Belum ada rating";
+        listEl.innerHTML = "";
+        return;
+      }
+      const avg = (list.reduce((s,r)=>s+r.score,0)/list.length).toFixed(1);
+      sumEl.innerHTML = `<span class="stars">${"&#9733;".repeat(Math.round(avg))}</span> ${avg} (${list.length} ulasan)`;
+      listEl.innerHTML = list.map(r => `
+        <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+          <p style="margin:0;font-size:13px;"><a href="user-profile.html?uid=${r.fromUid}" style="color:inherit;font-weight:600;">${escapeHtml(r.fromName)}</a> <span class="stars">${"&#9733;".repeat(r.score)}</span></p>
+          ${r.comment ? `<p style="margin:4px 0 0;font-size:13px;color:var(--muted);">${escapeHtml(r.comment)}</p>` : ""}
+        </div>
+      `).join("");
+    });
+  }
+  document.getElementById("btnKirimRating").addEventListener("click", async () => {
+    if (!currentUser) return showToast("Login dulu", true);
+    const score = parseInt(document.getElementById("ratingScore").value,10);
+    const comment = document.getElementById("ratingComment").value.trim();
+    await addDoc(collection(db, "produk", produkId, "rating"), {
+      fromUid: currentUser.uid, fromName: currentUser.displayName || "User", score, comment,
+      ownerId: produkData.ownerId, createdAt: new Date()
+    });
+    document.getElementById("ratingComment").value = "";
+    showToast("Rating terkirim");
+  });
+
+  // ===== CHAT =====
+  function watchChat(){
+    const q = query(collection(db, "produk", produkId, "chat"), orderBy("createdAt","asc"));
+    onSnapshot(q, (snap) => {
+      const box = document.getElementById("chatBox");
+      box.innerHTML = snap.docs.map(d => {
+        const m = d.data();
+        const mine = currentUser && m.senderId === currentUser.uid;
+        return `<div class="chat-msg ${mine?'me':'other'}"><span class="chat-name">${mine?escapeHtml(m.senderName):'<a href="user-profile.html?uid='+m.senderId+'" style="color:inherit;">'+escapeHtml(m.senderName)+'</a>'}</span>${escapeHtml(m.text)}</div>`;
+      }).join("");
+      box.scrollTop = box.scrollHeight;
+    });
+  }
+  document.getElementById("btnKirimChat").addEventListener("click", async () => {
+    if (!currentUser) return showToast("Login dulu buat chat", true);
+    const input = document.getElementById("chatInput");
+    const text = input.value.trim();
+    if (!text) return;
+    await addDoc(collection(db, "produk", produkId, "chat"), {
+      senderId: currentUser.uid, senderName: currentUser.displayName || "User", text, createdAt: new Date()
+    });
+    input.value = "";
+  });
+
+  // ===== REPORT =====
+  document.getElementById("btnReport").addEventListener("click", () => {
+    if (!currentUser) return showToast("Login dulu buat report", true);
+    document.getElementById("modalReport").style.display = "flex";
+  });
+  document.getElementById("reportBatal").addEventListener("click", () => document.getElementById("modalReport").style.display = "none");
+  document.getElementById("reportKirim").addEventListener("click", async () => {
+    const reason = document.getElementById("reportReason").value.trim();
+    const fotoFile = document.getElementById("reportFoto").files[0];
+    if (!reason) return showToast("Isi alasan laporan dulu", true);
+    if (!fotoFile) return showToast("Bukti screenshot wajib diupload", true);
+    const btn = document.getElementById("reportKirim"); btn.disabled = true;
+    try {
+      const buktiFoto = await compressImage(fotoFile, 900, 0.75);
+      await addDoc(collection(db, "reports"), {
+        reporterUid: currentUser.uid, targetType:"produk", targetId: produkId,
+        targetName: produkData.nama, reason, buktiFoto, createdAt: new Date(), resolved:false
+      });
+      document.getElementById("modalReport").style.display = "none";
+      document.getElementById("reportReason").value = ""; document.getElementById("reportFoto").value = "";
+      showToast("Laporan terkirim, terima kasih");
+    } catch(err){ console.error(err); showToast("Gagal kirim laporan", true); }
+    btn.disabled = false;
+  });
+</script>
+</body>
+</html>

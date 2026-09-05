@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Toko - Game Realms</title>
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+
+<div class="wrap">
+  <div class="topbar">
+    <button class="icon-btn" onclick="history.back()"><span class="icon-sym" aria-hidden="true">&#8592;</span></button>
+  </div>
+
+  <div class="card" id="tokoHeader" style="text-align:center;">Memuat...</div>
+
+  <h2 class="section-title">Produk aktif</h2>
+  <div id="produkList"><div class="empty-state">Memuat...</div></div>
+</div>
+
+<script type="module">
+  import { db } from "./assets/js/firebase-config.js";
+  import { applyTheme, enablePageTransitions, renderBgVideo, fmtRupiah, escapeHtml, isVvipActive } from "./assets/js/common.js";
+  import { doc, getDoc, collection, query, where, getDocs, collectionGroup } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+
+  applyTheme();
+  enablePageTransitions();
+  renderBgVideo();
+
+  const params = new URLSearchParams(location.search);
+  const uid = params.get("uid");
+  if (!uid){ document.body.innerHTML = "<p style='padding:20px;color:#fff'>Toko tidak ditemukan.</p>"; throw new Error("no uid"); }
+
+  async function load(){
+    const userSnap = await getDoc(doc(db,"users",uid));
+    if (!userSnap.exists()){ document.getElementById("tokoHeader").innerHTML = "Toko tidak ditemukan."; return; }
+    const u = userSnap.data();
+
+    // Rating gabungan dari semua produk milik toko ini (rating disimpan dgn field ownerId biar bisa di-query lintas produk)
+    let avgText = "Belum ada rating";
+    try {
+      const ratingSnap = await getDocs(query(collectionGroup(db,"rating"), where("ownerId","==",uid)));
+      if (!ratingSnap.empty){
+        let total = 0, count = 0;
+        ratingSnap.forEach(d => { total += d.data().score || 0; count++; });
+        const avg = (total/count).toFixed(1);
+        avgText = `<span class="stars">${"&#9733;".repeat(Math.round(avg))}</span> ${avg} (${count} ulasan)`;
+      }
+    } catch(e){ console.error(e); }
+
+    document.getElementById("tokoHeader").innerHTML = `
+      <a href="user-profile.html?uid=${uid}" style="color:inherit;">
+        <div class="avatar" style="width:64px;height:64px;font-size:22px;margin:0 auto 10px;">${escapeHtml((u.username||"?")[0].toUpperCase())}</div>
+        <p style="font-size:18px;font-weight:600;margin:0 0 4px;">${escapeHtml(u.username||"Toko")} ${isVvipActive(u) ? '<span class="vvip-badge">VVIP</span>' : ''}</p>
+      </a>
+      <div style="margin-bottom:8px;">${(u.badges||[]).map(b=>`<span class="badge-pill">&#9733; ${escapeHtml(b)}</span>`).join(" ")}</div>
+      <p class="muted" style="margin:0 0 8px;font-size:13px;">${escapeHtml(u.bio || "Belum ada bio toko.")}</p>
+      <p style="margin:0;font-size:13px;">${avgText}</p>
+    `;
+
+    const produkSnap = await getDocs(query(collection(db,"produk"), where("ownerId","==",uid), where("status","==","aktif")));
+    const list = produkSnap.docs.map(d => ({id:d.id, ...d.data()}));
+    const el = document.getElementById("produkList");
+    if (list.length === 0){ el.innerHTML = '<div class="empty-state">Toko ini belum punya produk aktif</div>'; return; }
+    el.innerHTML = list.map(p => `
+      <a href="produk-detail.html?id=${p.id}" class="card item-card" style="display:flex;">
+        <img class="item-thumb" src="${(p.fotos&&p.fotos[0]) || p.foto || 'https://placehold.co/64x64/1A1625/AFA9EC?text=' + encodeURIComponent((p.nama||'?')[0])}" />
+        <div class="item-info">
+          <p class="item-name">${escapeHtml(p.nama)}</p>
+          <p class="item-sub">${p.kategori ? escapeHtml(p.kategori) : "Kode: "+escapeHtml(p.kode||"-")}</p>
+          <p class="item-price">${p.hargaTerakhir ? fmtRupiah(p.hargaTerakhir) : 'Belum ada harga'}</p>
+        </div>
+      </a>
+    `).join("");
+  }
+  load();
+</script>
+</body>
+</html>

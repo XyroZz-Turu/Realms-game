@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Detail Lelang - Game Realms</title>
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+
+<div class="wrap">
+  <div class="topbar">
+    <button class="icon-btn" onclick="history.back()"><span class="icon-sym" aria-hidden="true">&#8592;</span></button>
+    <button class="icon-btn" id="btnFavorit"><span class="icon-sym" aria-hidden="true">&#9825;</span></button>
+  </div>
+
+  <div class="card" id="lelangHeader">Memuat...</div>
+
+  <div class="card" id="bidCard">
+    <h2 class="section-title">Bid tertinggi saat ini</h2>
+    <p style="font-size:26px;font-weight:600;color:var(--accent-soft);margin:0 0 4px;" id="hargaSekarang">-</p>
+    <p class="muted" id="bidTerakhirInfo" style="margin:0 0 12px;">Belum ada bid</p>
+    <p class="countdown" id="countdownText" style="font-size:15px;margin:0 0 16px;">-</p>
+
+    <div id="bidFormArea">
+      <div class="field">
+        <label id="minBidLabel">Bid kamu (Rp)</label>
+        <input type="text" inputmode="numeric" id="inputBid" placeholder="0" />
+      </div>
+      <button class="btn btn-primary" id="btnBid">Pasang Bid</button>
+    </div>
+    <div id="statusSelesai" style="display:none;">
+      <p style="text-align:center;font-weight:600;" id="pemenangText"></p>
+      <button class="btn btn-whatsapp" id="btnWhatsapp" style="display:none;margin-top:10px;"><span class="icon-sym" aria-hidden="true">&#9743;</span> Hubungi Penjual via WhatsApp</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="section-title">Riwayat bid</h2>
+    <div id="bidHistory"><p class="muted">Belum ada bid</p></div>
+  </div>
+
+  <div class="card">
+    <h2 class="section-title">Tanya seller</h2>
+    <div class="chat-box" id="chatBox"></div>
+    <div class="chat-input-row">
+      <input type="text" id="chatInput" placeholder="Tulis pesan..." />
+      <button class="btn btn-primary btn-sm" id="btnKirimChat">Kirim</button>
+    </div>
+  </div>
+
+  <button class="btn btn-outline" id="btnReport" style="margin-top:4px;"><span class="icon-sym" aria-hidden="true">&#9873;</span> Laporkan lelang ini</button>
+</div>
+
+<div class="modal-overlay" id="modalReport" style="display:none;">
+  <div class="modal-sheet">
+    <h3>Laporkan lelang ini</h3>
+    <div class="field"><label>Alasan laporan</label><textarea id="reportReason" rows="3" placeholder="Jelaskan alasan lo report..."></textarea></div>
+    <div class="field"><label>Bukti screenshot (wajib)</label><input type="file" id="reportFoto" accept="image/*" /></div>
+    <div class="grid-2">
+      <button class="btn btn-outline" id="reportBatal">Batal</button>
+      <button class="btn btn-danger" id="reportKirim">Kirim Laporan</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { db, auth } from "./assets/js/firebase-config.js";
+  import { enablePageTransitions, applyTheme, renderNav, renderBgVideo, fmtRupiah, parseNum, attachRupiahInput, escapeHtml, fmtCountdown, showToast, compressImage, waLink, renderLiveChatWidget, isVvipActive } from "./assets/js/common.js";
+  import {
+    doc, getDoc, updateDoc, collection, addDoc, query, orderBy, onSnapshot, setDoc, deleteDoc, runTransaction
+  } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
+
+  applyTheme();
+  enablePageTransitions();
+  renderBgVideo();
+  renderNav("lelang");
+
+  const params = new URLSearchParams(location.search);
+  const lelangId = params.get("id");
+  if (!lelangId){ document.body.innerHTML = "<p style='padding:20px;color:#fff'>Lelang tidak ditemukan.</p>"; throw new Error("no id"); }
+
+  const lelangRef = doc(db, "lelang", lelangId);
+  let currentUser = null;
+  let lelangData = null;
+  let countdownTimer = null;
+
+  onAuthStateChanged(auth, (user) => {
+    currentUser = user;
+    loadLelang();
+    watchChat();
+    if (user){ checkFavorit(); renderLiveChatWidget(user); }
+  });
+
+  let ownerCache = {};
+  async function loadLelang(){
+    onSnapshot(lelangRef, async (snap) => {
+      if (!snap.exists()){ document.getElementById("lelangHeader").innerHTML = "Lelang tidak ditemukan."; return; }
+      const l = snap.data();
+      lelangData = { id: snap.id, ...l, endAt: l.endAt?.toDate ? l.endAt.toDate() : new Date() };
+      if (!ownerCache[lelangData.ownerId]){
+        try {
+          const os = await getDoc(doc(db,"users",lelangData.ownerId));
+          ownerCache[lelangData.ownerId] = os.exists() ? os.data() : null;
+        } catch(e){ ownerCache[lelangData.ownerId] = null; }
+      }
+      renderHeader();
+      renderBidCard();
+      await maybeFinalize();
+      watchBids();
+    });
+  }
+
+  function renderHeader(){
+    const vvip = isVvipActive(ownerCache[lelangData.ownerId]);
+    document.getElementById("lelangHeader").innerHTML = `
+      <img src="${lelangData.foto || 'https://placehold.co/400x260/1A1625/AFA9EC?text=Lelang'}" style="width:100%;border-radius:12px;margin-bottom:14px;object-fit:cover;max-height:220px;" />
+      <p style="font-size:18px;font-weight:600;margin:0 0 4px;">${escapeHtml(lelangData.nama)} ${vvip ? '<span class="vvip-badge">VVIP</span>' : ''}</p>
+      <p class="muted" style="margin:0 0 10px;">Kode: ${escapeHtml(lelangData.kode||"-")} &middot; oleh ${escapeHtml(lelangData.ownerName||"Toko")}</p>
+      <p style="font-size:14px;line-height:1.5;margin:0;">${escapeHtml(lelangData.detail||"Tidak ada deskripsi.")}</p>
+    `;
+  }
+
+  function renderBidCard(){
+    document.getElementById("hargaSekarang").textContent = fmtRupiah(lelangData.bidTertinggi);
+    document.getElementById("bidTerakhirInfo").textContent = lelangData.bidTertinggiNama ? "Bid tertinggi oleh " + lelangData.bidTertinggiNama : "Belum ada bid, mulai dari harga awal";
+    const minNext = lelangData.bidTertinggi + lelangData.kelipatan;
+    document.getElementById("minBidLabel").textContent = `Bid kamu (min. ${fmtRupiah(minNext)})`;
+
+    if (countdownTimer) clearInterval(countdownTimer);
+    function tick(){
+      const sisa = lelangData.endAt.getTime() - Date.now();
+      const selesai = sisa <= 0 || lelangData.status === "selesai";
+      const cd = document.getElementById("countdownText");
+      if (selesai){
+        cd.textContent = "Lelang sudah berakhir";
+        document.getElementById("bidFormArea").style.display = "none";
+        document.getElementById("statusSelesai").style.display = "block";
+        document.getElementById("pemenangText").textContent = lelangData.winnerName
+          ? "Pemenang: " + lelangData.winnerName + " - " + fmtRupiah(lelangData.bidTertinggi)
+          : "Tidak ada pemenang (tidak ada bid masuk)";
+        const waBtn = document.getElementById("btnWhatsapp");
+        if (currentUser && lelangData.winnerId === currentUser.uid){
+          getDoc(doc(db,"users",lelangData.ownerId)).then(ownerSnap => {
+            const nomor = ownerSnap.exists() ? ownerSnap.data().whatsapp : "";
+            if (nomor){
+              waBtn.style.display = "flex";
+              waBtn.onclick = () => window.open(waLink(nomor, `Halo, saya menang lelang "${lelangData.nama}" seharga ${fmtRupiah(lelangData.bidTertinggi)} di K\u00e8nzy Store`), "_blank");
+            }
+          });
+        } else {
+          waBtn.style.display = "none";
+        }
+        clearInterval(countdownTimer);
+      } else {
+        cd.textContent = "Berakhir dalam " + fmtCountdown(sisa);
+        cd.classList.toggle("urgent", sisa < 3600*1000);
+        document.getElementById("bidFormArea").style.display = (currentUser && currentUser.uid === lelangData.ownerId) ? "none" : "block";
+        document.getElementById("statusSelesai").style.display = "none";
+      }
+    }
+    tick();
+    countdownTimer = setInterval(tick, 1000);
+  }
+
+  // ===== FINALISASI OTOMATIS (dicek tiap kali halaman ini dibuka) =====
+  async function maybeFinalize(){
+    if (lelangData.status === "selesai") return;
+    if (lelangData.endAt.getTime() > Date.now()) return;
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(lelangRef);
+        const d = snap.data();
+        if (d.status === "selesai") return;
+        const endAt = d.endAt?.toDate ? d.endAt.toDate() : new Date();
+        if (endAt.getTime() > Date.now()) return;
+        tx.update(lelangRef, { status:"selesai", winnerId: d.bidTertinggiUid||"", winnerName: d.bidTertinggiNama||"" });
+      });
+      // kirim notifikasi + riwayat (di luar transaction)
+      const fresh = (await getDoc(lelangRef)).data();
+      if (fresh.winnerId){
+        await addDoc(collection(db,"users", fresh.winnerId, "notifikasi"), {
+          type:"menang_lelang", message: `Kamu menang lelang "${fresh.nama}" dengan bid ${fmtRupiah(fresh.bidTertinggi)}`,
+          refId: lelangId, read:false, createdAt: new Date()
+        });
+        await addDoc(collection(db,"users", fresh.winnerId, "riwayat"), {
+          type:"menang_lelang", refId: lelangId, nama: fresh.nama, harga: fresh.bidTertinggi, createdAt: new Date()
+        });
+      }
+      await addDoc(collection(db,"users", fresh.ownerId, "notifikasi"), {
+        type:"lelang_selesai",
+        message: fresh.winnerId ? `Lelang "${fresh.nama}" selesai, dimenangkan ${fresh.winnerName} seharga ${fmtRupiah(fresh.bidTertinggi)}` : `Lelang "${fresh.nama}" selesai tanpa ada bid`,
+        refId: lelangId, read:false, createdAt: new Date()
+      });
+    } catch(err){ console.error("finalize error", err); }
+  }
+
+  // ===== BID =====
+  attachRupiahInput(document.getElementById("inputBid"));
+  document.getElementById("btnBid").addEventListener("click", async () => {
+    if (!currentUser) return showToast("Login dulu buat bid", true);
+    if (currentUser.uid === lelangData.ownerId) return showToast("Gak bisa nawar lelang sendiri", true);
+    const jumlah = parseNum(document.getElementById("inputBid").value);
+    const minNext = lelangData.bidTertinggi + lelangData.kelipatan;
+    if (jumlah < minNext) return showToast(`Bid minimal ${fmtRupiah(minNext)}`, true);
+    const btn = document.getElementById("btnBid"); btn.disabled = true;
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(lelangRef);
+        const d = snap.data();
+        if (d.status === "selesai") throw new Error("Lelang sudah selesai");
+        const minCheck = d.bidTertinggi + d.kelipatan;
+        if (jumlah < minCheck) throw new Error("Ada yang nawar duluan, coba lagi dengan nominal lebih tinggi");
+        tx.update(lelangRef, { bidTertinggi: jumlah, bidTertinggiUid: currentUser.uid, bidTertinggiNama: currentUser.displayName || "User" });
+      });
+      await addDoc(collection(db,"lelang",lelangId,"bids"), {
+        uid: currentUser.uid, nama: currentUser.displayName || "User", jumlah, createdAt: new Date()
+      });
+      document.getElementById("inputBid").value = "";
+      showToast("Bid berhasil dipasang");
+    } catch(err){
+      showToast(err.message || "Gagal bid", true);
+    }
+    btn.disabled = false;
+  });
+
+  function watchBids(){
+    const q = query(collection(db,"lelang",lelangId,"bids"), orderBy("createdAt","desc"));
+    onSnapshot(q, (snap) => {
+      const list = snap.docs.map(d => d.data());
+      const el = document.getElementById("bidHistory");
+      if (list.length === 0){ el.innerHTML = '<p class="muted">Belum ada bid</p>'; return; }
+      el.innerHTML = list.map(b => `
+        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
+          <a href="user-profile.html?uid=${b.uid}" style="color:inherit;">${escapeHtml(b.nama)}</a><span style="font-weight:600;">${fmtRupiah(b.jumlah)}</span>
+        </div>
+      `).join("");
+    });
+  }
+
+  // ===== FAVORIT =====
+  const favRef = () => doc(db, "users", currentUser.uid, "favorit", "lelang_"+lelangId);
+  async function checkFavorit(){
+    const snap = await getDoc(favRef());
+    document.getElementById("btnFavorit").innerHTML = snap.exists() ? '<span class="icon-sym" style="color:#D4537E" aria-hidden="true">&#9829;</span>' : '<span class="icon-sym" aria-hidden="true">&#9825;</span>';
+  }
+  document.getElementById("btnFavorit").addEventListener("click", async () => {
+    if (!currentUser) return showToast("Login dulu", true);
+    const ref = favRef();
+    const snap = await getDoc(ref);
+    if (snap.exists()){ await deleteDoc(ref); showToast("Dihapus dari favorit"); }
+    else { await setDoc(ref, { type:"lelang", refId: lelangId, nama: lelangData.nama, foto: lelangData.foto||"", createdAt: new Date() }); showToast("Ditambah ke favorit"); }
+    checkFavorit();
+  });
+
+  // ===== CHAT =====
+  function watchChat(){
+    const q = query(collection(db,"lelang",lelangId,"chat"), orderBy("createdAt","asc"));
+    onSnapshot(q, (snap) => {
+      const box = document.getElementById("chatBox");
+      box.innerHTML = snap.docs.map(d => {
+        const m = d.data();
+        const mine = currentUser && m.senderId === currentUser.uid;
+        return `<div class="chat-msg ${mine?'me':'other'}"><span class="chat-name">${mine?escapeHtml(m.senderName):'<a href="user-profile.html?uid='+m.senderId+'" style="color:inherit;">'+escapeHtml(m.senderName)+'</a>'}</span>${escapeHtml(m.text)}</div>`;
+      }).join("");
+      box.scrollTop = box.scrollHeight;
+    });
+  }
+  document.getElementById("btnKirimChat").addEventListener("click", async () => {
+    if (!currentUser) return showToast("Login dulu buat chat", true);
+    const input = document.getElementById("chatInput");
+    const text = input.value.trim();
+    if (!text) return;
+    await addDoc(collection(db,"lelang",lelangId,"chat"), { senderId: currentUser.uid, senderName: currentUser.displayName || "User", text, createdAt: new Date() });
+    input.value = "";
+  });
+
+  // ===== REPORT =====
+  document.getElementById("btnReport").addEventListener("click", () => {
+    if (!currentUser) return showToast("Login dulu buat report", true);
+    document.getElementById("modalReport").style.display = "flex";
+  });
+  document.getElementById("reportBatal").addEventListener("click", () => document.getElementById("modalReport").style.display = "none");
+  document.getElementById("reportKirim").addEventListener("click", async () => {
+    const reason = document.getElementById("reportReason").value.trim();
+    const fotoFile = document.getElementById("reportFoto").files[0];
+    if (!reason) return showToast("Isi alasan laporan dulu", true);
+    if (!fotoFile) return showToast("Bukti screenshot wajib diupload", true);
+    const btn = document.getElementById("reportKirim"); btn.disabled = true;
+    try {
+      const buktiFoto = await compressImage(fotoFile, 900, 0.75);
+      await addDoc(collection(db,"reports"), {
+        reporterUid: currentUser.uid, targetType:"lelang", targetId: lelangId,
+        targetName: lelangData.nama, reason, buktiFoto, createdAt: new Date(), resolved:false
+      });
+      document.getElementById("modalReport").style.display = "none";
+      document.getElementById("reportReason").value = ""; document.getElementById("reportFoto").value = "";
+      showToast("Laporan terkirim, terima kasih");
+    } catch(err){ console.error(err); showToast("Gagal kirim laporan", true); }
+    btn.disabled = false;
+  });
+</script>
+</body>
+</html>

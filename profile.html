@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Profil - Game Realms</title>
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand"><div class="brand-logo">G</div><h1>Profil</h1></div>
+    <button class="icon-btn" id="btnLogout"><span class="icon-sym" aria-hidden="true">&#8998;</span></button>
+  </div>
+
+  <div class="card" style="display:flex;align-items:center;gap:14px;">
+    <div class="avatar" id="avatarInitial" style="width:52px;height:52px;font-size:18px;">?</div>
+    <div style="flex:1;">
+      <p style="font-size:16px;font-weight:600;margin:0 0 2px;" id="profileName">-</p>
+      <p class="muted" style="margin:0;" id="profileEmail">-</p>
+      <p class="muted" style="margin:2px 0 0;" id="profileWA"><span class="icon-sym" aria-hidden="true">&#9743;</span> <span id="profileWANumber">Belum diisi</span></p>
+      <div id="badgeList" style="margin-top:6px;"></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      <button class="icon-btn" id="btnEditUsername"><span class="icon-sym" aria-hidden="true">&#9998;</span></button>
+      <button class="icon-btn" id="btnEditWA"><span class="icon-sym" aria-hidden="true">&#9743;</span></button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+      <div style="flex:1;">
+        <p style="font-size:13px;margin:0 0 4px;color:var(--muted);">Bio toko</p>
+        <p style="font-size:13px;margin:0;" id="profileBio">Belum diisi</p>
+      </div>
+      <button class="icon-btn" id="btnEditBio"><span class="icon-sym" aria-hidden="true">&#9998;</span></button>
+    </div>
+    <a href="#" id="linkTokoPublik" class="btn btn-outline btn-sm" style="margin-top:10px;"><span class="icon-sym" aria-hidden="true">&#8862;</span> Lihat halaman toko publik saya</a>
+  </div>
+
+  <div class="card theme-toggle">
+    <span style="font-size:13px;"><span class="icon-sym" aria-hidden="true">&#9789;</span> Mode gelap/terang</span>
+    <div class="theme-toggle-switch" id="themeSwitch"></div>
+  </div>
+
+  <div class="card">
+    <div class="grid-2" style="text-align:center;">
+      <div><p style="font-size:22px;font-weight:600;margin:0;" id="statProduk">0</p><p class="muted" style="margin:0;">Produk</p></div>
+      <div><p style="font-size:22px;font-weight:600;margin:0;" id="statLelang">0</p><p class="muted" style="margin:0;">Lelang sukses</p></div>
+    </div>
+    <div class="grid-2" style="text-align:center;margin-top:14px;">
+      <div><p style="font-size:22px;font-weight:600;margin:0;" id="statOmzet">Rp 0</p><p class="muted" style="margin:0;">Total omzet</p></div>
+      <div><p style="font-size:22px;font-weight:600;margin:0;" id="statRating">-</p><p class="muted" style="margin:0;">Rating rata-rata</p></div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="notif">Notifikasi</button>
+    <button class="tab-btn" data-tab="wishlist">Wishlist</button>
+    <button class="tab-btn" data-tab="riwayat">Riwayat</button>
+  </div>
+
+  <div id="panelNotif"><div class="empty-state">Memuat...</div></div>
+  <div id="panelWishlist" style="display:none;"><div class="empty-state">Memuat...</div></div>
+  <div id="panelRiwayat" style="display:none;"><div class="empty-state">Memuat...</div></div>
+
+  <a href="admin.html" class="btn btn-outline" id="linkAdmin" style="display:none;margin-top:16px;">Panel Admin</a>
+</div>
+
+<script type="module">
+  import { auth, db, requireLogin, logout } from "./assets/js/firebase-config.js";
+  import { enablePageTransitions, applyTheme, toggleTheme, renderNav, renderBgVideo, fmtRupiah, escapeHtml, timeAgo, ensureUserProfile, showToast, renderLiveChatWidget } from "./assets/js/common.js";
+  import {
+    doc, getDoc, updateDoc, collection, query, orderBy, onSnapshot, where, collectionGroup, getDocs
+  } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+
+  applyTheme();
+  enablePageTransitions();
+  renderBgVideo();
+  renderNav("profile");
+
+  let me = null;
+  let profile = null;
+
+  requireLogin(async (user) => {
+    me = user;
+    profile = await ensureUserProfile(user);
+    renderLiveChatWidget(user, profile.username);
+    renderProfile();
+    watchStats();
+    watchNotif();
+    watchWishlist();
+    watchRiwayat();
+    if (profile.isAdmin) document.getElementById("linkAdmin").style.display = "block";
+  });
+
+  function renderProfile(){
+    document.getElementById("profileName").textContent = profile.username;
+    document.getElementById("profileEmail").textContent = profile.email;
+    document.getElementById("profileWANumber").textContent = profile.whatsapp || "Belum diisi - tambahin biar pembeli bisa hubungi kamu";
+    document.getElementById("profileBio").textContent = profile.bio || "Belum diisi";
+    document.getElementById("avatarInitial").textContent = (profile.username||"?")[0].toUpperCase();
+    document.getElementById("badgeList").innerHTML = (profile.badges||[]).map(b => `<span class="badge-pill">&#9733; ${escapeHtml(b)}</span>`).join(" ");
+    document.getElementById("linkTokoPublik").href = "toko.html?uid=" + me.uid;
+  }
+
+  document.getElementById("btnEditBio").addEventListener("click", async () => {
+    const baru = prompt("Bio toko kamu (kelihatan di halaman toko publik):", profile.bio || "");
+    if (baru === null) return;
+    await updateDoc(doc(db,"users",me.uid), { bio: baru.trim() });
+    profile.bio = baru.trim();
+    renderProfile();
+    showToast("Bio diupdate");
+  });
+
+  // ===== TOGGLE TEMA =====
+  document.getElementById("themeSwitch").addEventListener("click", () => { toggleTheme(); });
+
+  document.getElementById("btnEditWA").addEventListener("click", async () => {
+    const baru = prompt("Nomor WhatsApp (format 08xx atau 62xx):", profile.whatsapp || "");
+    if (baru === null) return;
+    await updateDoc(doc(db,"users",me.uid), { whatsapp: baru.trim() });
+    profile.whatsapp = baru.trim();
+    renderProfile();
+    showToast("Nomor WhatsApp diupdate");
+  });
+
+  document.getElementById("btnEditUsername").addEventListener("click", async () => {
+    const baru = prompt("Ganti username:", profile.username);
+    if (!baru || baru.trim() === "") return;
+    await updateDoc(doc(db,"users",me.uid), { username: baru.trim() });
+    profile.username = baru.trim();
+    renderProfile();
+    showToast("Username diupdate");
+  });
+
+  document.getElementById("btnLogout").addEventListener("click", () => {
+    if (confirm("Yakin mau logout?")) logout();
+  });
+
+  // ===== STATS =====
+  async function watchStats(){
+    const produkSnap = await getDocs(query(collection(db,"produk"), where("ownerId","==", me.uid)));
+    document.getElementById("statProduk").textContent = produkSnap.size;
+
+    const lelangSnap = await getDocs(query(collection(db,"lelang"), where("ownerId","==", me.uid), where("status","==","selesai")));
+    let sukses = 0, omzet = 0;
+    lelangSnap.forEach(d => { const l = d.data(); if (l.winnerId){ sukses++; omzet += l.bidTertinggi||0; } });
+    document.getElementById("statLelang").textContent = sukses;
+    document.getElementById("statOmzet").textContent = fmtRupiah(omzet);
+
+    // rating rata-rata dari semua produk milik user (collectionGroup)
+    try {
+      const ratingSnap = await getDocs(collectionGroup(db,"rating"));
+      // filter manual karena collectionGroup gak bisa langsung where ke path induk gampang tanpa index field tambahan
+      let total = 0, count = 0;
+      ratingSnap.forEach(d => {
+        const path = d.ref.path; // produk/{id}/rating/{id}
+        if (path.startsWith("produk/")) {
+          // cek ownernya nanti kalau perlu; disini kita skip filter berat, cukup tampilkan pesan default
+        }
+      });
+      document.getElementById("statRating").textContent = "-";
+    } catch(e){ document.getElementById("statRating").textContent = "-"; }
+  }
+
+  // ===== TABS =====
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      ["notif","wishlist","riwayat"].forEach(t => document.getElementById("panel"+t.charAt(0).toUpperCase()+t.slice(1)).style.display = (t===btn.dataset.tab ? "block":"none"));
+    });
+  });
+
+  // ===== NOTIFIKASI =====
+  function watchNotif(){
+    const q = query(collection(db,"users",me.uid,"notifikasi"), orderBy("createdAt","desc"));
+    onSnapshot(q, (snap) => {
+      const el = document.getElementById("panelNotif");
+      if (snap.empty){ el.innerHTML = '<div class="empty-state">Belum ada notifikasi</div>'; return; }
+      el.innerHTML = snap.docs.map(d => {
+        const n = d.data();
+        return `<div class="card" style="padding:12px 14px;">
+          <p style="margin:0;font-size:13px;">${escapeHtml(n.message)}</p>
+          <p class="muted" style="margin:4px 0 0;font-size:11px;">${timeAgo(n.createdAt?.toDate ? n.createdAt.toDate() : new Date())}</p>
+        </div>`;
+      }).join("");
+    });
+  }
+
+  // ===== WISHLIST =====
+  function watchWishlist(){
+    const q = query(collection(db,"users",me.uid,"favorit"), orderBy("createdAt","desc"));
+    onSnapshot(q, (snap) => {
+      const el = document.getElementById("panelWishlist");
+      if (snap.empty){ el.innerHTML = '<div class="empty-state">Belum ada favorit</div>'; return; }
+      el.innerHTML = snap.docs.map(d => {
+        const f = d.data();
+        const href = f.type === "lelang" ? `lelang-detail.html?id=${f.refId}` : `produk-detail.html?id=${f.refId}`;
+        return `<a href="${href}" class="card item-card" style="display:flex;">
+          <img class="item-thumb" src="${f.foto || 'https://placehold.co/64x64/1A1625/AFA9EC?text=%3F'}" />
+          <div class="item-info"><p class="item-name">${escapeHtml(f.nama)}</p><p class="item-sub">${f.type==='lelang'?'Lelang':'Produk'}</p></div>
+        </a>`;
+      }).join("");
+    });
+  }
+
+  // ===== RIWAYAT =====
+  function watchRiwayat(){
+    const q = query(collection(db,"users",me.uid,"riwayat"), orderBy("createdAt","desc"));
+    onSnapshot(q, (snap) => {
+      const el = document.getElementById("panelRiwayat");
+      if (snap.empty){ el.innerHTML = '<div class="empty-state">Belum ada riwayat transaksi</div>'; return; }
+      el.innerHTML = snap.docs.map(d => {
+        const r = d.data();
+        return `<div class="card item-card" style="display:flex;">
+          <div class="item-info"><p class="item-name">${escapeHtml(r.nama)}</p><p class="item-sub">${r.type==='menang_lelang'?'Menang lelang':'Pembelian'}</p></div>
+          <p class="item-price">${fmtRupiah(r.harga)}</p>
+        </div>`;
+      }).join("");
+    });
+  }
+</script>
+</body>
+</html>

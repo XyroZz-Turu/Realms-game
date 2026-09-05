@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Toko Saya - Game Realms</title>
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand"><div class="brand-logo">G</div><h1>Toko Saya</h1></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" id="tabProduk">Produk</button>
+    <button class="tab-btn" id="tabLelang">Lelang</button>
+  </div>
+
+  <div id="panelProduk">
+    <button class="btn btn-primary" id="btnTambahProduk" style="margin-bottom:16px;">+ Tambah Produk</button>
+    <div id="produkList"><div class="empty-state">Memuat...</div></div>
+  </div>
+
+  <div id="panelLelang" style="display:none;">
+    <button class="btn btn-primary" id="btnTambahLelang" style="margin-bottom:16px;">+ Buat Lelang</button>
+    <div id="lelangList"><div class="empty-state">Memuat...</div></div>
+  </div>
+</div>
+
+<!-- Modal Tambah Produk -->
+<div class="modal-overlay" id="modalProduk" style="display:none;">
+  <div class="modal-sheet">
+    <h3>Tambah Produk</h3>
+    <div class="field"><label>Nama produk</label><input type="text" id="pNama" /></div>
+    <div class="grid-2">
+      <div class="field"><label>Kode produk</label><input type="text" id="pKode" /></div>
+      <div class="field"><label>Kategori</label><input type="text" id="pKategori" placeholder="misal: Mainan" /></div>
+    </div>
+    <div class="field"><label>Stok</label><input type="number" id="pStok" placeholder="0" min="0" /></div>
+    <div class="field"><label>Detail produk</label><textarea id="pDetail" rows="3"></textarea></div>
+    <div class="field">
+      <label>Foto (maks. 5)</label>
+      <div class="thumb-picker" id="pThumbPicker"></div>
+      <input type="file" id="pFoto" accept="image/*" multiple style="margin-top:8px;" />
+    </div>
+    <div class="grid-2">
+      <button class="btn btn-outline" id="pBatal">Batal</button>
+      <button class="btn btn-primary" id="pSimpan">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Tambah Lelang -->
+<div class="modal-overlay" id="modalLelang" style="display:none;">
+  <div class="modal-sheet">
+    <h3>Buat Lelang</h3>
+    <div class="field"><label>Nama barang</label><input type="text" id="lNama" /></div>
+    <div class="field"><label>Kode/kategori</label><input type="text" id="lKode" /></div>
+    <div class="field"><label>Detail barang</label><textarea id="lDetail" rows="3"></textarea></div>
+    <div class="field"><label>Foto</label><input type="file" id="lFoto" accept="image/*" /></div>
+    <div class="grid-2">
+      <div class="field"><label>Harga awal (Rp)</label><input type="text" inputmode="numeric" id="lHargaAwal" /></div>
+      <div class="field"><label>Kelipatan bid min (Rp)</label><input type="text" inputmode="numeric" id="lKelipatan" /></div>
+    </div>
+    <div class="field"><label>Durasi lelang (jam)</label><input type="number" id="lDurasi" placeholder="misal 24" /></div>
+    <div class="grid-2">
+      <button class="btn btn-outline" id="lBatal">Batal</button>
+      <button class="btn btn-primary" id="lSimpan">Mulai Lelang</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { auth, db, requireLogin } from "./assets/js/firebase-config.js";
+  import {
+    enablePageTransitions, applyTheme,
+    renderNav, renderBgVideo, fmtRupiah, parseNum, attachRupiahInput,
+    escapeHtml, compressImage, showToast, fmtCountdown, ensureUserProfile, renderLiveChatWidget
+  } from "./assets/js/common.js";
+  import {
+    collection, addDoc, query, where, orderBy, onSnapshot, doc, deleteDoc, Timestamp, getDoc
+  } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+
+  applyTheme();
+  enablePageTransitions();
+  renderBgVideo();
+  renderNav("dashboard");
+
+  let me = null;
+  let myProfile = null;
+
+  requireLogin(async (user) => {
+    me = user;
+    myProfile = await ensureUserProfile(user);
+    renderLiveChatWidget(user, myProfile.username);
+    watchProduk();
+    watchLelang();
+  });
+
+  // ===== TABS =====
+  const tabProduk = document.getElementById("tabProduk"), tabLelang = document.getElementById("tabLelang");
+  const panelProduk = document.getElementById("panelProduk"), panelLelang = document.getElementById("panelLelang");
+  tabProduk.addEventListener("click", () => { tabProduk.classList.add("active"); tabLelang.classList.remove("active"); panelProduk.style.display="block"; panelLelang.style.display="none"; });
+  tabLelang.addEventListener("click", () => { tabLelang.classList.add("active"); tabProduk.classList.remove("active"); panelLelang.style.display="block"; panelProduk.style.display="none"; });
+
+  // ===== PRODUK =====
+  function watchProduk(){
+    const q = query(collection(db,"produk"), where("ownerId","==", me.uid), orderBy("createdAt","desc"));
+    onSnapshot(q, (snap) => {
+      const list = snap.docs.map(d => ({id:d.id, ...d.data()}));
+      const el = document.getElementById("produkList");
+      if (list.length === 0){ el.innerHTML = '<div class="empty-state">Belum ada produk. Tambah dulu yuk.</div>'; return; }
+      el.innerHTML = list.map(p => `
+        <a href="produk-detail.html?id=${p.id}" class="card item-card" style="display:flex;">
+          <img class="item-thumb" src="${(p.fotos&&p.fotos[0]) || p.foto || 'https://placehold.co/64x64/1A1625/AFA9EC?text=' + encodeURIComponent((p.nama||'?')[0])}" />
+          <div class="item-info">
+            <p class="item-name">${escapeHtml(p.nama)} ${p.status==='terjual'?'<span class="item-badge sold">Terjual</span>':''}</p>
+            <p class="item-sub">Kode: ${escapeHtml(p.kode||"-")} ${p.kategori?('&middot; '+escapeHtml(p.kategori)):''}</p>
+            <p class="item-price">${p.hargaTerakhir ? fmtRupiah(p.hargaTerakhir) : 'Belum ada harga'} <span class="chip ${p.stok===0?'stok-low':''}" style="margin-left:6px;">Stok: ${p.stok ?? 0}</span></p>
+          </div>
+        </a>
+      `).join("");
+    });
+  }
+
+  document.getElementById("btnTambahProduk").addEventListener("click", () => {
+    resetProdukForm();
+    document.getElementById("modalProduk").style.display = "flex";
+  });
+  document.getElementById("pBatal").addEventListener("click", () => document.getElementById("modalProduk").style.display = "none");
+
+  let pFotosData = []; // array base64, maks 5
+
+  function resetProdukForm(){
+    pFotosData = [];
+    ["pNama","pKode","pKategori","pStok","pDetail"].forEach(id => document.getElementById(id).value = "");
+    document.getElementById("pFoto").value = "";
+    renderThumbPicker();
+  }
+
+  function renderThumbPicker(){
+    const wrap = document.getElementById("pThumbPicker");
+    wrap.innerHTML = pFotosData.map((src, i) => `
+      <div class="thumb-slot"><img src="${src}" /><span class="thumb-remove" data-remove="${i}">&times;</span></div>
+    `).join("");
+    wrap.querySelectorAll("[data-remove]").forEach(el => el.addEventListener("click", () => {
+      pFotosData.splice(parseInt(el.dataset.remove,10), 1);
+      renderThumbPicker();
+    }));
+  }
+
+  document.getElementById("pFoto").addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files).slice(0, 5 - pFotosData.length);
+    for (const f of files){
+      try { pFotosData.push(await compressImage(f)); } catch(err){ console.error(err); }
+    }
+    renderThumbPicker();
+    e.target.value = "";
+    if (pFotosData.length >= 5) showToast("Maksimal 5 foto");
+  });
+
+  document.getElementById("pSimpan").addEventListener("click", async () => {
+    const nama = document.getElementById("pNama").value.trim();
+    const kode = document.getElementById("pKode").value.trim();
+    const kategori = document.getElementById("pKategori").value.trim();
+    const stok = parseInt(document.getElementById("pStok").value, 10) || 0;
+    const detail = document.getElementById("pDetail").value.trim();
+    if (!nama) return showToast("Nama produk wajib diisi", true);
+    const btn = document.getElementById("pSimpan"); btn.disabled = true;
+    try {
+      await addDoc(collection(db,"produk"), {
+        ownerId: me.uid, ownerName: myProfile.username, nama, kode, kategori, stok, detail,
+        fotos: pFotosData, foto: pFotosData[0] || "",
+        status:"aktif", hargaTerakhir:0, hargaBeliTerakhir:0, createdAt: new Date()
+      });
+      document.getElementById("modalProduk").style.display = "none";
+      resetProdukForm();
+      showToast("Produk ditambahkan");
+    } catch(err){ console.error(err); showToast("Gagal simpan produk", true); }
+    btn.disabled = false;
+  });
+
+  // ===== LELANG =====
+  function watchLelang(){
+    const q = query(collection(db,"lelang"), where("ownerId","==", me.uid), orderBy("createdAt","desc"));
+    onSnapshot(q, (snap) => {
+      const list = snap.docs.map(d => {
+        const l = d.data();
+        return { id:d.id, ...l, endAt: l.endAt?.toDate ? l.endAt.toDate() : new Date() };
+      });
+      const el = document.getElementById("lelangList");
+      if (list.length === 0){ el.innerHTML = '<div class="empty-state">Belum ada lelang. Buat dulu yuk.</div>'; return; }
+      el.innerHTML = list.map(l => {
+        const sisa = l.endAt.getTime() - Date.now();
+        const selesai = sisa <= 0 || l.status === "selesai";
+        return `
+        <a href="lelang-detail.html?id=${l.id}" class="card item-card" style="display:flex;">
+          <img class="item-thumb" src="${l.foto || 'https://placehold.co/64x64/1A1625/AFA9EC?text=' + encodeURIComponent((l.nama||'?')[0])}" />
+          <div class="item-info">
+            <p class="item-name">${escapeHtml(l.nama)} ${selesai?'<span class="item-badge sold">Selesai</span>':'<span class="item-badge">Aktif</span>'}</p>
+            <p class="item-sub">Bid tertinggi: ${l.bidTertinggiNama ? escapeHtml(l.bidTertinggiNama) : "belum ada"}</p>
+            <p class="item-price">${fmtRupiah(l.bidTertinggi || l.hargaAwal)}</p>
+          </div>
+        </a>`;
+      }).join("");
+    });
+  }
+
+  document.getElementById("btnTambahLelang").addEventListener("click", () => document.getElementById("modalLelang").style.display = "flex");
+  document.getElementById("lBatal").addEventListener("click", () => document.getElementById("modalLelang").style.display = "none");
+  attachRupiahInput(document.getElementById("lHargaAwal"));
+  attachRupiahInput(document.getElementById("lKelipatan"));
+  document.getElementById("lSimpan").addEventListener("click", async () => {
+    const nama = document.getElementById("lNama").value.trim();
+    const kode = document.getElementById("lKode").value.trim();
+    const detail = document.getElementById("lDetail").value.trim();
+    const fotoFile = document.getElementById("lFoto").files[0];
+    const hargaAwal = parseNum(document.getElementById("lHargaAwal").value);
+    const kelipatan = parseNum(document.getElementById("lKelipatan").value);
+    const durasiJam = parseInt(document.getElementById("lDurasi").value, 10);
+    if (!nama || !hargaAwal || !kelipatan || !durasiJam) return showToast("Lengkapi semua field lelang", true);
+    const btn = document.getElementById("lSimpan"); btn.disabled = true;
+    try {
+      const foto = fotoFile ? await compressImage(fotoFile) : "";
+      const now = new Date();
+      const endAt = new Date(now.getTime() + durasiJam*3600*1000);
+      await addDoc(collection(db,"lelang"), {
+        ownerId: me.uid, ownerName: myProfile.username, nama, kode, detail, foto,
+        hargaAwal, kelipatan, bidTertinggi: hargaAwal, bidTertinggiUid:"", bidTertinggiNama:"",
+        status:"aktif", winnerId:"", winnerName:"",
+        startAt: Timestamp.fromDate(now), endAt: Timestamp.fromDate(endAt), createdAt: now
+      });
+      document.getElementById("modalLelang").style.display = "none";
+      ["lNama","lKode","lDetail","lHargaAwal","lKelipatan","lDurasi"].forEach(id => document.getElementById(id).value = "");
+      document.getElementById("lFoto").value = "";
+      showToast("Lelang dimulai");
+    } catch(err){ console.error(err); showToast("Gagal buat lelang", true); }
+    btn.disabled = false;
+  });
+</script>
+</body>
+</html>

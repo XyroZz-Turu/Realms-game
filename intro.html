@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Game Realms</title>
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+
+<div class="intro-screen">
+  <video id="introVideo" src="assets/intro.mp4" autoplay muted playsinline
+         onerror="this.style.display='none'; document.getElementById('introFallback').style.display='flex';"></video>
+  <div class="intro-fallback" id="introFallback" style="display:none;">
+    <div class="brand-logo" style="display:flex;align-items:center;justify-content:center;background:var(--accent);">G</div>
+    <p style="color:#F4F2FA;font-weight:600;font-size:18px;margin:0;">Game Realms</p>
+  </div>
+
+  <button class="intro-skip" id="btnSkip">Lewati <span class="icon-sym" aria-hidden="true">&#9197;</span></button>
+  <div class="intro-progress"><div class="intro-progress-bar" id="progressBar"></div></div>
+</div>
+
+<script type="module">
+  import { auth } from "./assets/js/firebase-config.js";
+  import { applyTheme } from "./assets/js/common.js";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
+
+  applyTheme();
+
+  // Kalau ternyata belum login (misal buka langsung URL ini), lempar ke login
+  onAuthStateChanged(auth, (user) => { if (!user) window.location.href = "login.html"; });
+
+  const DURASI = 5000; // 5 detik
+  const mulai = Date.now();
+  let sudahPindah = false;
+
+  function lanjut(){
+    if (sudahPindah) return;
+    sudahPindah = true;
+    window.location.href = "dashboard.html";
+  }
+
+  function tick(){
+    const elapsed = Date.now() - mulai;
+    const pct = Math.min(100, (elapsed / DURASI) * 100);
+    document.getElementById("progressBar").style.width = pct + "%";
+    if (elapsed >= DURASI) lanjut();
+    else requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  document.getElementById("btnSkip").addEventListener("click", lanjut);
+</script>
+</body>
+</html>

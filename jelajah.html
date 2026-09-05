@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Jelajah - Game Realms</title>
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-logo">G</div>
+      <h1>Jelajah Produk</h1>
+    </div>
+  </div>
+
+  <div id="announceBanner"></div>
+  <div class="promo-banner" id="promoBanner">
+    <img id="promoBannerImg" src="" alt="" style="display:none;" />
+    <div class="promo-banner-text">
+      <p class="promo-banner-title">Jual, beli, & lelang</p>
+      <p class="promo-banner-sub">Pantau harga tiap produk lewat grafik otomatis</p>
+    </div>
+  </div>
+
+  <div class="field">
+    <input type="text" id="searchBox" placeholder="Cari nama atau kode produk..." />
+  </div>
+  <div class="grid-2" style="margin-bottom:10px;">
+    <select id="sortSelect">
+      <option value="terbaru">Terbaru</option>
+      <option value="termurah">Harga termurah</option>
+      <option value="termahal">Harga termahal</option>
+    </select>
+    <select id="filterSelect">
+      <option value="semua">Semua produk</option>
+      <option value="aktif">Masih dijual</option>
+      <option value="terjual">Sudah terjual</option>
+    </select>
+  </div>
+  <div class="field">
+    <select id="kategoriSelect"><option value="semua">Semua kategori</option></select>
+  </div>
+
+  <div id="produkList"><div class="empty-state">Memuat produk...</div></div>
+</div>
+
+<script type="module">
+  import { db, auth } from "./assets/js/firebase-config.js";
+  import { enablePageTransitions, applyTheme, renderNav, renderBgVideo, fmtRupiah, escapeHtml, timeAgo, renderLiveChatWidget, fetchOwnerMap, isVvipActive } from "./assets/js/common.js";
+  import { collection, query, orderBy, onSnapshot, doc } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
+
+  applyTheme();
+  enablePageTransitions();
+  renderBgVideo();
+  renderNav("jelajah");
+
+  onAuthStateChanged(auth, (user) => { if (user) renderLiveChatWidget(user); });
+
+  // Banner & pengumuman diatur admin lewat admin.html, disimpan di dokumen config/homepage
+  onSnapshot(doc(db,"config","homepage"), (snap) => {
+    const data = snap.exists() ? snap.data() : {};
+    const img = document.getElementById("promoBannerImg");
+    if (data.bannerImage){ img.src = data.bannerImage; img.style.display = "block"; }
+    else { img.style.display = "none"; }
+
+    const annEl = document.getElementById("announceBanner");
+    if (data.announcement){
+      annEl.innerHTML = `<div class="announce-banner"><span class="icon-sym" aria-hidden="true">&#9834;</span><span>${escapeHtml(data.announcement)}</span></div>`;
+    } else {
+      annEl.innerHTML = "";
+    }
+  });
+
+  let ownerMap = {};
+  let allProduk = [];
+
+  const q = query(collection(db, "produk"), orderBy("createdAt", "desc"));
+  onSnapshot(q, async (snap) => {
+    allProduk = snap.docs.map(d => {
+      const data = d.data();
+      return { id: d.id, ...data, createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date() };
+    });
+    ownerMap = await fetchOwnerMap(allProduk.map(p => p.ownerId));
+    render();
+  });
+
+  function render(){
+    const search = document.getElementById("searchBox").value.toLowerCase().trim();
+    const sort = document.getElementById("sortSelect").value;
+    const filter = document.getElementById("filterSelect").value;
+    const kategori = document.getElementById("kategoriSelect").value;
+
+    // isi dropdown kategori dari data yang ada (cuma sekali jalan efektifnya, tapi aman diulang)
+    const kategoriSet = Array.from(new Set(allProduk.map(p => p.kategori).filter(Boolean)));
+    const ksel = document.getElementById("kategoriSelect");
+    if (ksel.dataset.count != kategoriSet.length){
+      ksel.innerHTML = '<option value="semua">Semua kategori</option>' + kategoriSet.map(k => `<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`).join("");
+      ksel.value = kategori;
+      ksel.dataset.count = kategoriSet.length;
+    }
+
+    let list = allProduk.filter(p => {
+      if (search && !((p.nama||"").toLowerCase().includes(search) || (p.kode||"").toLowerCase().includes(search))) return false;
+      if (filter === "aktif" && p.status === "terjual") return false;
+      if (filter === "terjual" && p.status !== "terjual") return false;
+      if (kategori !== "semua" && p.kategori !== kategori) return false;
+      return true;
+    });
+
+    if (sort === "termurah") list.sort((a,b) => (a.hargaTerakhir||0) - (b.hargaTerakhir||0));
+    else if (sort === "termahal") list.sort((a,b) => (b.hargaTerakhir||0) - (a.hargaTerakhir||0));
+    else list.sort((a,b) => b.createdAt - a.createdAt);
+
+    // VVIP naik ke paling atas, urutan lain di dalamnya tetap ikut sort di atas
+    list.sort((a,b) => {
+      const av = isVvipActive(ownerMap[a.ownerId]) ? 1 : 0;
+      const bv = isVvipActive(ownerMap[b.ownerId]) ? 1 : 0;
+      return bv - av;
+    });
+
+    const listEl = document.getElementById("produkList");
+    if (list.length === 0){
+      listEl.innerHTML = '<div class="empty-state">Belum ada produk yang cocok</div>';
+      return;
+    }
+    listEl.innerHTML = list.map(p => `
+      <a href="produk-detail.html?id=${p.id}" class="card item-card" style="display:flex;">
+        <img class="item-thumb" src="${(p.fotos&&p.fotos[0]) || p.foto || 'https://placehold.co/64x64/1A1625/AFA9EC?text=' + encodeURIComponent((p.nama||'?')[0])}" alt="" />
+        <div class="item-info">
+          <p class="item-name">${escapeHtml(p.nama||"Tanpa nama")} ${isVvipActive(ownerMap[p.ownerId]) ? '<span class="vvip-badge">VVIP</span>' : ''} ${p.status==='terjual' ? '<span class="item-badge sold">Terjual</span>' : ''}</p>
+          <p class="item-sub">${escapeHtml(p.ownerName||"Toko")} ${p.kategori ? '&middot; <span class="chip">'+escapeHtml(p.kategori)+'</span>' : ''}</p>
+          <p class="item-price">${p.hargaTerakhir ? fmtRupiah(p.hargaTerakhir) : 'Belum ada harga'}</p>
+        </div>
+      </a>
+    `).join("");
+  }
+
+  document.getElementById("searchBox").addEventListener("input", render);
+  document.getElementById("sortSelect").addEventListener("change", render);
+  document.getElementById("filterSelect").addEventListener("change", render);
+  document.getElementById("kategoriSelect").addEventListener("change", render);
+</script>
+</body>
+</html>

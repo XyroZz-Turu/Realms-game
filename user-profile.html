@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Profil User - Game Realms</title>
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+
+<div class="wrap">
+  <div class="topbar">
+    <button class="icon-btn" onclick="history.back()"><span class="icon-sym" aria-hidden="true">&#8592;</span></button>
+  </div>
+
+  <div class="card" id="userHeader" style="text-align:center;">Memuat...</div>
+
+  <div class="card">
+    <div class="grid-2" style="text-align:center;">
+      <div><p style="font-size:22px;font-weight:600;margin:0;" id="statProduk">0</p><p class="muted" style="margin:0;">Produk</p></div>
+      <div><p style="font-size:22px;font-weight:600;margin:0;" id="statLelang">0</p><p class="muted" style="margin:0;">Lelang dibuat</p></div>
+    </div>
+    <div style="text-align:center;margin-top:14px;">
+      <p style="font-size:22px;font-weight:600;margin:0;" id="statRating">-</p><p class="muted" style="margin:0;">Rating gabungan</p>
+    </div>
+  </div>
+
+  <a href="#" id="linkToko" class="btn btn-primary"><span class="icon-sym" aria-hidden="true">&#8862;</span> Lihat Halaman Toko</a>
+</div>
+
+<script type="module">
+  import { db } from "./assets/js/firebase-config.js";
+  import { applyTheme, enablePageTransitions, renderBgVideo, escapeHtml, isVvipActive } from "./assets/js/common.js";
+  import { doc, getDoc, collection, query, where, getDocs, collectionGroup } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+
+  applyTheme();
+  enablePageTransitions();
+  renderBgVideo();
+
+  const params = new URLSearchParams(location.search);
+  const uid = params.get("uid");
+  if (!uid){ document.body.innerHTML = "<p style='padding:20px;color:#fff'>User tidak ditemukan.</p>"; throw new Error("no uid"); }
+
+  function tanggalGabung(date){
+    return date.toLocaleDateString("id-ID", { day:"numeric", month:"long", year:"numeric" });
+  }
+
+  async function load(){
+    const userSnap = await getDoc(doc(db,"users",uid));
+    if (!userSnap.exists()){ document.getElementById("userHeader").innerHTML = "User tidak ditemukan."; return; }
+    const u = userSnap.data();
+    const gabung = u.createdAt?.toDate ? u.createdAt.toDate() : new Date();
+
+    document.getElementById("userHeader").innerHTML = `
+      <div class="avatar" style="width:72px;height:72px;font-size:26px;margin:0 auto 12px;">${escapeHtml((u.username||"?")[0].toUpperCase())}</div>
+      <p style="font-size:19px;font-weight:600;margin:0 0 6px;">${escapeHtml(u.username||"User")} ${isVvipActive(u) ? '<span class="vvip-badge">VVIP</span>' : ''}</p>
+      <div style="margin-bottom:8px;">${(u.badges||[]).length ? (u.badges||[]).map(b=>`<span class="badge-pill">&#9733; ${escapeHtml(b)}</span>`).join(" ") : '<span class="muted" style="font-size:12px;">Belum punya badge</span>'}</div>
+      <p class="muted" style="margin:0;font-size:12px;"><span class="icon-sym" aria-hidden="true">&#9744;</span> Bergabung sejak ${tanggalGabung(gabung)}</p>
+    `;
+
+    document.getElementById("linkToko").href = "toko.html?uid=" + uid;
+
+    const produkSnap = await getDocs(query(collection(db,"produk"), where("ownerId","==",uid)));
+    document.getElementById("statProduk").textContent = produkSnap.size;
+
+    const lelangSnap = await getDocs(query(collection(db,"lelang"), where("ownerId","==",uid)));
+    document.getElementById("statLelang").textContent = lelangSnap.size;
+
+    try {
+      const ratingSnap = await getDocs(query(collectionGroup(db,"rating"), where("ownerId","==",uid)));
+      if (!ratingSnap.empty){
+        let total = 0, count = 0;
+        ratingSnap.forEach(d => { total += d.data().score || 0; count++; });
+        const avg = (total/count).toFixed(1);
+        document.getElementById("statRating").innerHTML = `<span class="stars">${"&#9733;".repeat(Math.round(avg))}</span> ${avg}`;
+      } else {
+        document.getElementById("statRating").textContent = "-";
+      }
+    } catch(e){ console.error(e); document.getElementById("statRating").textContent = "-"; }
+  }
+  load();
+</script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lelang - Game Realms</title>
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand"><div class="brand-logo">G</div><h1>Lelang</h1></div>
+  </div>
+
+  <div class="field">
+    <input type="text" id="searchBox" placeholder="Cari nama atau kode barang lelang..." />
+  </div>
+
+  <div id="endingSoonSection" style="display:none;margin-bottom:20px;">
+    <h2 class="section-title"><span class="icon-sym" aria-hidden="true">&#9201;</span> Berakhir segera</h2>
+    <div id="endingSoonList"></div>
+  </div>
+
+  <h2 class="section-title">Semua lelang aktif</h2>
+  <div id="lelangList"><div class="empty-state">Memuat...</div></div>
+</div>
+
+<script type="module">
+  import { db, auth } from "./assets/js/firebase-config.js";
+  import { enablePageTransitions, applyTheme, renderNav, renderBgVideo, fmtRupiah, escapeHtml, fmtCountdown, renderLiveChatWidget, fetchOwnerMap, isVvipActive } from "./assets/js/common.js";
+  import { collection, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+  import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.12.0/firebase-auth.js";
+
+  applyTheme();
+  enablePageTransitions();
+  renderBgVideo();
+  renderNav("lelang");
+
+  onAuthStateChanged(auth, (user) => { if (user) renderLiveChatWidget(user); });
+
+  let ownerMap = {};
+  let allLelang = [];
+
+  const q = query(collection(db,"lelang"), orderBy("createdAt","desc"));
+  onSnapshot(q, async (snap) => {
+    allLelang = snap.docs.map(d => {
+      const l = d.data();
+      return { id:d.id, ...l, endAt: l.endAt?.toDate ? l.endAt.toDate() : new Date() };
+    });
+    ownerMap = await fetchOwnerMap(allLelang.map(l => l.ownerId));
+    render();
+  });
+
+  function itemHtml(l){
+    const sisa = l.endAt.getTime() - Date.now();
+    const selesai = sisa <= 0 || l.status === "selesai";
+    const urgent = !selesai && sisa < 3600*1000*3;
+    return `
+      <a href="lelang-detail.html?id=${l.id}" class="card item-card" style="display:flex;">
+        <img class="item-thumb" src="${l.foto || 'https://placehold.co/64x64/1A1625/AFA9EC?text=' + encodeURIComponent((l.nama||'?')[0])}" />
+        <div class="item-info">
+          <p class="item-name">${escapeHtml(l.nama)} ${isVvipActive(ownerMap[l.ownerId]) ? '<span class="vvip-badge">VVIP</span>' : ''} ${selesai?'<span class="item-badge sold">Selesai</span>':(urgent?'<span class="item-badge ending">Segera berakhir</span>':'')}</p>
+          <p class="item-sub">oleh ${escapeHtml(l.ownerName||"Toko")} &middot; ${l.bidTertinggiNama ? 'bid oleh ' + escapeHtml(l.bidTertinggiNama) : 'belum ada bid'}</p>
+          <p class="item-price">${fmtRupiah(l.bidTertinggi || l.hargaAwal)}</p>
+          <p class="countdown ${urgent?'urgent':''}" style="margin:4px 0 0;">${selesai ? 'Lelang selesai' : fmtCountdown(sisa)}</p>
+        </div>
+      </a>`;
+  }
+
+  function render(){
+    const search = document.getElementById("searchBox").value.toLowerCase().trim();
+    let list = allLelang.filter(l => !search || (l.nama||"").toLowerCase().includes(search) || (l.kode||"").toLowerCase().includes(search));
+
+    const aktif = list.filter(l => l.status !== "selesai" && l.endAt.getTime() > Date.now());
+    const endingSoon = aktif.filter(l => (l.endAt.getTime() - Date.now()) < 3600*1000*3).sort((a,b)=>a.endAt-b.endAt);
+    const vvipSort = (arr) => arr.slice().sort((a,b) => {
+      const av = isVvipActive(ownerMap[a.ownerId]) ? 1 : 0;
+      const bv = isVvipActive(ownerMap[b.ownerId]) ? 1 : 0;
+      if (av !== bv) return bv - av;
+      return a.endAt - b.endAt;
+    });
+    const semuaAktif = vvipSort(aktif);
+
+    const esSection = document.getElementById("endingSoonSection");
+    if (endingSoon.length){
+      esSection.style.display = "block";
+      document.getElementById("endingSoonList").innerHTML = vvipSort(endingSoon).map(itemHtml).join("");
+    } else {
+      esSection.style.display = "none";
+    }
+
+    const listEl = document.getElementById("lelangList");
+    listEl.innerHTML = semuaAktif.length ? semuaAktif.map(itemHtml).join("") : '<div class="empty-state">Belum ada lelang aktif</div>';
+  }
+
+  document.getElementById("searchBox").addEventListener("input", render);
+  setInterval(render, 30000); // refresh countdown tiap 30 detik
+</script>
+</body>
+</html>
